@@ -1,40 +1,45 @@
+#include <WiFi101.h>
+#include "arduino_secrets.h" 
 #include <SPI.h>
-#include <Ethernet.h>
 #include <String.h>
 boolean  RelayMode[4]= { false,false,false,false} ;
 
-#if defined(WIZ550io_WITH_MACADDRESS) // Use assigned MAC address of WIZ550io
-;
-#else
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-#endif 
 
+///////please enter your sensitive data in the Secret tab/arduino_secrets.h
+char ssid[] = SECRET_SSID;        // your network SSID (name)
+char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
+int keyIndex = 0;            // your network key Index number (needed only for WEP)
+int status = WL_IDLE_STATUS;
 
 IPAddress deviceip(192,168,88,177);
-IPAddress  RelayDevice(192,168,88,150) ;
-int  RelayDevicePort = 6000 ;
+IPAddress  RelayDevice(192,168,88,152) ;
+int  RelayDevicePort = 502 ;
 //------------------IP DataEthernetClient
-EthernetClient client;
-EthernetClient client1;
-uint8_t TurnOn[4][12] = { {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x00, 0xFF, 0x00},
-                       {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x01, 0xFF, 0x00},
-                       {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x02, 0xFF, 0x00},
-                       {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x03, 0xFF, 0x00}
-                        };
-uint8_t TurnOff[4][12] = { {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00} ,
-                        {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x01, 0x00, 0x00} ,
-                        {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x02, 0x00, 0x00} ,
-                        {0x00, 0x21, 0x00, 0x00, 0x00, 0x06, 0x01, 0x05, 0x00, 0x03, 0x00, 0x00} 
-                          };
- // Please update IP address according to your local network
 
-EthernetServer server(80);
+uint8_t TurnOn[4][8] = { 
+                          {0x01,0x05,0x00,0x00,0xFF,0x00,0x8C,0x3A} ,
+                          {0x01,0x05,0x00,0x01,0xFF,0x00,0xDD,0xFA} ,
+                          {0x01,0x05,0x00,0x02,0xFF,0x00,0x2D,0xFA} ,
+                          {0x01,0x05,0x00,0x03,0xFF,0x00,0x7C,0x3A} ,
+                          } ;
+    
+uint8_t TurnOff[4][8] = { 
+                          {0x01,0x05,0x00,0x00,0x00,0x00,0xCD,0xCA} ,
+                          {0x01,0x05,0x00,0x01,0x00,0x00,0x9C,0x0A} ,
+                          {0x01,0x05,0x00,0x02,0x00,0x00,0x6C,0x0A} ,
+                          {0x01,0x05,0x00,0x03,0x00,0x00,0x3D,0xCA}
+                          } ;
+
+ // Please update IP address according to your local network
+String MacData ;
+WiFiServer server(80);
  String currentLine = "";                // make a String to hold incoming data from the client
-  
+  WiFiClient client;
+WiFiClient client1;
               
 void setup() {
    Serial.begin(9600);
-     Serial.println("W5500 Start") ;
+     Serial.println("MKR1000 Ethernet to Modbus Gateway Start") ;
  /*
   //Initialize serial and wait for port to open:
   if (Ethernet.begin(mac) == 0) {
@@ -46,16 +51,19 @@ void setup() {
 
   }
   */
-#if defined(WIZ550io_WITH_MACADDRESS)
-  Ethernet.begin(deviceip);
-#else
-  Ethernet.begin(mac, deviceip);
-#endif 
-  Serial.print("IP 位址：");
-  Serial.println(Ethernet.localIP());
-  // you're connected now, so print out the status:
-  Serial.println("Get IP") ;
-      server.begin();  
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+    status = WiFi.begin(ssid, pass);
+
+    // wait 10 seconds for connection:
+    delay(1000);
+  }
+    server.begin();  
+  Serial.println("Connected to wifi");
+  printWiFiStatus();
+MacData = GetMacAddress() ;
 }
 
 void loop() {
@@ -297,5 +305,52 @@ void TurnOffRelay(int no)
 
 }
 
+
+void printWiFiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+String GetMacAddress() {
+  // the MAC address of your WiFi shield
+  String Tmp = "" ;
+  byte mac[6];
+  
+  // print your MAC address:
+  WiFi.macAddress(mac);
+  for (int i=0; i<6; i++)
+    {
+        Tmp.concat(print2HEX(mac[i])) ;
+    }
+    Tmp.toUpperCase() ;
+  return Tmp ;
+}
+
+
+
+String  print2HEX(int number) {
+  String ttt ;
+  if (number >= 0 && number < 16)
+  {
+    ttt = String("0") + String(number,HEX);
+  }
+  else
+  {
+      ttt = String(number,HEX);
+  }
+  return ttt ;
+}
 
 
